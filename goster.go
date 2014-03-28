@@ -3,6 +3,7 @@ package main
 import (
 	"fmt"
 	"log"
+	"os"
 	"os/exec"
 	"strconv"
 
@@ -11,13 +12,21 @@ import (
 
 func main() {
 	var ( 
-	err error
+		err error
+		getOrigin bool = false
+		getPoints bool = false
+		origin *Position
+		points []*Position
+		pos *Position
+		pointsBox gwu.TextBox
 	)	
 
-	// Create and build a window
-	win := gwu.NewWindow("slpp-ui", "UI for slpp")
-	win.Style().SetFullWidth()	
+	points = make([]*Position, 0)
 	
+	// Create and build a window
+	win := gwu.NewWindow("goster", "Goster plot extractor")
+	win.Style().SetFullWidth()	
+
 	// inFileLoad panel
 	inFileLoadPanel := gwu.NewHorizontalPanel()
 	inFileLoadLabel := gwu.NewLabel("Filename")
@@ -45,36 +54,97 @@ func main() {
 	inFileLoadPanel.Add(inFileLoadButton)
 	win.Add(inFileLoadPanel)
 	
-	// TODO: image frame with image label
 	// imgPanel
-	imgPanel := gwu.NewHorizontalPanel()	
+	imgPanel := gwu.NewHorizontalPanel()
 	axPanel := gwu.NewVerticalPanel()
-	axXPanel := gwu.NewVerticalPanel()
 
-	axXLabel := gwu.NewLabel("X-Axis")
-	axXOriginButton := gwu.NewButton("Mark X axis origin")
-	axXOriginLabel := gwu.NewLabel("X origin at: " + "--, --")
+	axLabel := gwu.NewLabel("Axis")
+	axOriginButton := gwu.NewButton("Mark axes origin")
+	axClearOriginButton := gwu.NewButton("Clear")
+	axOriginLabel := gwu.NewLabel("Origin at: " + "--, --")
 	
 	// Actions
-	axXOriginButton.AddEHandlerFunc(func(e gwu.Event) {
-		xOrigin := func(eType gwu.EventType) (*Position) {
-			x, y := eType.Mouse()
-			fmt.Println(x, y)
-			return &Position{x, y}
-		} (gwu.ETYPE_CLICK)
-		fmt.Println(xOrigin)
-// 		axXOriginLabel.SetText("X origin at: " + xOrigin.Str())
-		e.MarkDirty(axXOriginLabel)
+	axOriginButton.AddEHandlerFunc(func(e gwu.Event) {
+		getOrigin = true
+	}, gwu.ETYPE_CLICK)
+	
+	axClearOriginButton.AddEHandlerFunc(func(e gwu.Event) {
+		getOrigin = false
+		axOriginLabel.SetText("Origin at: " + "--, --")
+		e.MarkDirty(axOriginLabel)
+	}, gwu.ETYPE_CLICK)
+	
+	plotImg := gwu.NewImage("Test", "file:///home/ziosi/Dropbox/DCode/go/src/github.com/brunetto/goster/mapelli_progenitor_remnant.png")
+	log.Println(plotImg.Style().Size())
+	
+	plotImg.AddEHandlerFunc(func(e gwu.Event) {
+		x, y := e.Mouse()
+		if getOrigin == true {
+			origin = &Position{x, y}
+			axOriginLabel.SetText("Origin at: " + origin.Str())
+			getOrigin = false
+			e.MarkDirty(axOriginLabel)
+		} else if getPoints == true {
+			pos = &Position{x/*-origin.X*/, y/*-origin.Y*/}
+			points = append(points, pos)
+			pointsBox.SetText(pointsBox.Text() + pos.Str() + "\n")
+			pointsBox.SetRows(len(points))
+			e.MarkDirty(pointsBox)
+		}
 	}, gwu.ETYPE_CLICK)
 	
 	// Add components
-	axXPanel.Add(axXLabel)
-	axXPanel.Add(axXOriginButton)
-	axPanel.Add(axXPanel)
+	axPanel.Add(axLabel)
+	axPanel.Add(axOriginButton)
+	axPanel.Add(axClearOriginButton)
+	axPanel.Add(axOriginLabel)
 	imgPanel.Add(axPanel)
+	imgPanel.Add(plotImg)
 	win.Add(imgPanel)
 	
-	pointsPanel := gwu.NewHorizontalPanel()
+	pointsPanel := gwu.NewVerticalPanel()
+	pointsButtonPanel := gwu.NewHorizontalPanel()
+	getPointsButton := gwu.NewButton("Get points")
+	getPointsButton.AddEHandlerFunc(func(e gwu.Event) {
+		getPoints = true
+	}, gwu.ETYPE_CLICK)
+	
+	donePointsButton := gwu.NewButton("Done")
+	donePointsButton.AddEHandlerFunc(func(e gwu.Event) {
+		getPoints = false
+	}, gwu.ETYPE_CLICK)
+	
+	clearPointsButton := gwu.NewButton("Clear")
+	clearPointsButton.AddEHandlerFunc(func(e gwu.Event) {
+		getPoints = false
+		points = make([]*Position, 0)
+		pointsBox.SetText("")
+		pointsBox.SetRows(0)
+		e.MarkDirty(pointsBox)
+	}, gwu.ETYPE_CLICK)
+	
+	savePointsButton := gwu.NewButton("Save points")
+	savePointsButton.AddEHandlerFunc(func(e gwu.Event) {
+		// Write results
+		var outFile *os.File
+		if outFile, err = os.Create("points.dat"); err != nil {
+			log.Fatal(err)
+		}
+		defer outFile.Close()
+		for _, point := range points {
+			fmt.Fprintf(outFile,"%v\n", point.Str())
+		}
+	}, gwu.ETYPE_CLICK)
+	
+	pointsBox = gwu.NewTextBox("")
+	pointsBox.SetReadOnly(true)
+	
+	pointsButtonPanel.Add(getPointsButton)
+	pointsButtonPanel.Add(donePointsButton)
+	pointsButtonPanel.Add(clearPointsButton)
+	pointsButtonPanel.Add(savePointsButton)
+	pointsPanel.Add(pointsButtonPanel)
+	pointsPanel.Add(pointsBox)
 	win.Add(pointsPanel)
 	
 	
@@ -113,5 +183,5 @@ type Position struct {
 }
 
 func (p *Position) Str () (string){
-	return strconv.Itoa(p.X) + ", " + strconv.Itoa(p.X)
+	return strconv.Itoa(p.X) + ", " + strconv.Itoa(p.Y)
 }
