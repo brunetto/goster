@@ -1,14 +1,21 @@
 package main
 
 import (
+	"bytes"
 	"fmt"
+	"image/png"
+	"net/http"
 	"log"
 	"os"
 	"os/exec"
 	"strconv"
+	"time"
 
 	"github.com/brunetto/gowut/gwu"
 )
+
+var f *os.File
+var imgBytes *bytes.Buffer
 
 func main() {
 	var ( 
@@ -19,20 +26,89 @@ func main() {
 		points []*Position
 		pos *Position
 		pointsBox gwu.TextBox
+		imgName string
+		maxY int
 	)	
 
 	points = make([]*Position, 0)
 	
 	// Create and build a window
 	win := gwu.NewWindow("goster", "Goster plot extractor")
-	win.Style().SetFullWidth()	
+	win.Style().SetFullWidth()
+	win.SetCellPadding(5)
 
+	mainPanel := gwu.NewHorizontalPanel()
+	mainPanel.SetVAlign(gwu.VA_TOP)
+	win.Add(mainPanel)
+	controlsPanel := gwu.NewVerticalPanel()
+	plotImg := gwu.NewImage("Please, load a png image", "")
+	
+	mainPanel.Add(controlsPanel)
+	mainPanel.Add(plotImg)
+	
+	
+	
+	
+	
+	
 	// inFileLoad panel
-	inFileLoadPanel := gwu.NewHorizontalPanel()
+	inFileLoadPanel := gwu.NewVerticalPanel()
+	inFileBtnsPanel := gwu.NewHorizontalPanel()
 	inFileLoadLabel := gwu.NewLabel("Filename")
-	inFileLoadBox := gwu.NewTextBox("")
+	inFileLoadLabel.Style().SetFontWeight(gwu.FONT_WEIGHT_BOLD)
+	inFileLoadBox := gwu.NewTextBox("mapelli_progenitor_remnant.png")
 	inFileBrowseButton := gwu.NewButton("Browse")
 	inFileLoadButton := gwu.NewButton("Load")
+	
+	inFileLoadPanel.Add(inFileLoadLabel)
+	inFileLoadPanel.Add(inFileLoadBox)
+	inFileBtnsPanel.Add(inFileBrowseButton)
+	inFileBtnsPanel.Add(inFileLoadButton)
+	inFileLoadPanel.Add(inFileBtnsPanel)
+	controlsPanel.Add(inFileLoadPanel)
+	
+	
+	
+	axPanel := gwu.NewVerticalPanel()
+	axBtnsPanel := gwu.NewHorizontalPanel()
+	axLabel := gwu.NewLabel("Axis")
+	axLabel.Style().SetFontWeight(gwu.FONT_WEIGHT_BOLD)
+	axOriginButton := gwu.NewButton("Mark axes origin")
+	axClearOriginButton := gwu.NewButton("Clear")
+	axOriginLabel := gwu.NewLabel("Origin at: " + "--, --")
+	
+	axPanel.Add(axLabel)
+	axBtnsPanel.Add(axOriginButton)
+	axBtnsPanel.Add(axClearOriginButton)
+	axPanel.Add(axBtnsPanel)
+	axPanel.Add(axOriginLabel)
+	controlsPanel.Add(axPanel)
+	
+	pointsPanel := gwu.NewVerticalPanel()
+	pointsLabel := gwu.NewLabel("Points")
+	pointsLabel.Style().SetFontWeight(gwu.FONT_WEIGHT_BOLD)
+	getPointsButton := gwu.NewButton("Get points")
+	donePointsButton := gwu.NewButton("Done")
+	pointsButtonPanel := gwu.NewHorizontalPanel()
+	clearPointsButton := gwu.NewButton("Clear")
+	savePointsButton := gwu.NewButton("Save points")
+	pointsBox = gwu.NewTextBox("")
+	pointsBox.SetReadOnly(false)
+	pointsBox.AddSyncOnETypes(gwu.ETYPE_KEY_UP)
+	pointsButtonPanel.Add(getPointsButton)
+	pointsButtonPanel.Add(donePointsButton)
+	pointsButtonPanel.Add(clearPointsButton)
+	pointsButtonPanel.Add(savePointsButton)
+	pointsPanel.Add(pointsLabel)
+	pointsPanel.Add(pointsButtonPanel)
+	pointsPanel.Add(pointsBox)
+	controlsPanel.Add(pointsPanel)
+	
+	clearAllButton := gwu.NewButton("Clear All")
+	clearAllButton.SetEnabled(false)
+	controlsPanel.Add(clearAllButton)
+	
+	
 	
 	// Actions
 	inFileLoadBox.AddSyncOnETypes(gwu.ETYPE_KEY_UP)
@@ -41,31 +117,25 @@ func main() {
 		inFileLoadBox.SetText("testBrowse")
 		e.MarkDirty(inFileLoadBox)
 	}, gwu.ETYPE_CLICK)
-	
+		
 	inFileLoadButton.AddEHandlerFunc(func(e gwu.Event) {
-		inFileLoadBox.SetText("testLoad")
-		e.MarkDirty(inFileLoadBox)
+		imgName = inFileLoadBox.Text()
+		f, _ = os.Open(imgName)
+		defer f.Close()
+		img, _ := png.Decode(f)
+		// FIXME: inserire i punti in nero sul plot
+		imgBytes = new(bytes.Buffer)
+		png.Encode(imgBytes, img)
+		rect := img.Bounds()
+		maxY = rect.Max.Y
+		plotImg.SetUrl("http://localhost:8081/"+imgName)
+		e.MarkDirty(plotImg)
 	}, gwu.ETYPE_CLICK)
 	
-	// Add components
-	inFileLoadPanel.Add(inFileLoadLabel)
-	inFileLoadPanel.Add(inFileLoadBox)
-	inFileLoadPanel.Add(inFileBrowseButton)
-	inFileLoadPanel.Add(inFileLoadButton)
-	win.Add(inFileLoadPanel)
-	
-	// imgPanel
-	imgPanel := gwu.NewHorizontalPanel()
-	axPanel := gwu.NewVerticalPanel()
-
-	axLabel := gwu.NewLabel("Axis")
-	axOriginButton := gwu.NewButton("Mark axes origin")
-	axClearOriginButton := gwu.NewButton("Clear")
-	axOriginLabel := gwu.NewLabel("Origin at: " + "--, --")
-	
-	// Actions
 	axOriginButton.AddEHandlerFunc(func(e gwu.Event) {
 		getOrigin = true
+		clearAllButton.SetEnabled(true)
+		e.MarkDirty(clearAllButton)
 	}, gwu.ETYPE_CLICK)
 	
 	axClearOriginButton.AddEHandlerFunc(func(e gwu.Event) {
@@ -74,47 +144,15 @@ func main() {
 		e.MarkDirty(axOriginLabel)
 	}, gwu.ETYPE_CLICK)
 	
-	plotImg := gwu.NewImage("Test", "file:///home/ziosi/Dropbox/DCode/go/src/github.com/brunetto/goster/mapelli_progenitor_remnant.png")
-	log.Println(plotImg.Style().Size())
-	
-	plotImg.AddEHandlerFunc(func(e gwu.Event) {
-		x, y := e.Mouse()
-		if getOrigin == true {
-			origin = &Position{x, y}
-			axOriginLabel.SetText("Origin at: " + origin.Str())
-			getOrigin = false
-			e.MarkDirty(axOriginLabel)
-		} else if getPoints == true {
-			pos = &Position{x/*-origin.X*/, y/*-origin.Y*/}
-			points = append(points, pos)
-			pointsBox.SetText(pointsBox.Text() + pos.Str() + "\n")
-			pointsBox.SetRows(len(points))
-			e.MarkDirty(pointsBox)
-		}
-	}, gwu.ETYPE_CLICK)
-	
-	// Add components
-	axPanel.Add(axLabel)
-	axPanel.Add(axOriginButton)
-	axPanel.Add(axClearOriginButton)
-	axPanel.Add(axOriginLabel)
-	imgPanel.Add(axPanel)
-	imgPanel.Add(plotImg)
-	win.Add(imgPanel)
-	
-	pointsPanel := gwu.NewVerticalPanel()
-	pointsButtonPanel := gwu.NewHorizontalPanel()
-	getPointsButton := gwu.NewButton("Get points")
 	getPointsButton.AddEHandlerFunc(func(e gwu.Event) {
 		getPoints = true
 	}, gwu.ETYPE_CLICK)
 	
-	donePointsButton := gwu.NewButton("Done")
+	
 	donePointsButton.AddEHandlerFunc(func(e gwu.Event) {
 		getPoints = false
 	}, gwu.ETYPE_CLICK)
 	
-	clearPointsButton := gwu.NewButton("Clear")
 	clearPointsButton.AddEHandlerFunc(func(e gwu.Event) {
 		getPoints = false
 		points = make([]*Position, 0)
@@ -123,7 +161,6 @@ func main() {
 		e.MarkDirty(pointsBox)
 	}, gwu.ETYPE_CLICK)
 	
-	savePointsButton := gwu.NewButton("Save points")
 	savePointsButton.AddEHandlerFunc(func(e gwu.Event) {
 		// Write results
 		var outFile *os.File
@@ -136,18 +173,43 @@ func main() {
 		}
 	}, gwu.ETYPE_CLICK)
 	
-	pointsBox = gwu.NewTextBox("")
-	pointsBox.SetReadOnly(true)
+	plotImg.AddEHandlerFunc(func(e gwu.Event) {
+		x, y := e.Mouse()
+		y = maxY - y
+		if getOrigin == true {
+			origin = &Position{x, y}
+			axOriginLabel.SetText("Origin at: " + origin.Str())
+			getOrigin = false
+			e.MarkDirty(axOriginLabel)
+		} else if getPoints == true {
+			pos = &Position{x-origin.X, y-origin.Y}
+			points = append(points, pos)
+			pointsBox.SetText(pointsBox.Text() + pos.Str() + "\n")
+			pointsBox.SetRows(len(points))
+			e.MarkDirty(pointsBox)
+		}
+	}, gwu.ETYPE_CLICK)
 	
-	pointsButtonPanel.Add(getPointsButton)
-	pointsButtonPanel.Add(donePointsButton)
-	pointsButtonPanel.Add(clearPointsButton)
-	pointsButtonPanel.Add(savePointsButton)
-	pointsPanel.Add(pointsButtonPanel)
-	pointsPanel.Add(pointsBox)
-	win.Add(pointsPanel)
+	clearAllButton.AddEHandlerFunc(func(e gwu.Event) {
+		inFileLoadBox.SetText("mapelli_progenitor_remnant.png")
+		e.MarkDirty(inFileLoadBox)
+		getOrigin = false
+		axOriginLabel.SetText("Origin at: " + "--, --")
+		e.MarkDirty(axOriginLabel)
+		getPoints = false
+		points = make([]*Position, 0)
+		pointsBox.SetText("")
+		pointsBox.SetRows(0)
+		e.MarkDirty(pointsBox)
+		plotImg.SetUrl("")
+		e.MarkDirty(plotImg)
+		clearAllButton.SetEnabled(false)
+		e.MarkDirty(clearAllButton)
+	}, gwu.ETYPE_CLICK)
 	
 	
+	
+	http.HandleFunc("/", ImgHandler3)
 	// Create and start a GUI server (omitting error check)
 	server := gwu.NewServer("interface", "localhost:8081")//"localhost:8081")
 	server.SetText("Hola!!")
@@ -156,6 +218,7 @@ func main() {
 	if err = server.Start(""); err != nil {
 		log.Fatal("Error starting server: ", err)
 	}
+	
 }
 
 
@@ -185,3 +248,17 @@ type Position struct {
 func (p *Position) Str () (string){
 	return strconv.Itoa(p.X) + ", " + strconv.Itoa(p.Y)
 }
+
+func ImgHandler (w http.ResponseWriter, r *http.Request) {
+	http.ServeFile(w, r, r.URL.Path[1:])
+}
+
+func ImgHandler2 (w http.ResponseWriter, r *http.Request) {
+	http.ServeContent(w, r, "image", time.Now(), f)
+}
+
+func ImgHandler3 (w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-type", "image/png")
+	imgBytes.WriteTo(w)
+}
+
